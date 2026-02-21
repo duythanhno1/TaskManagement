@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Managerment.ApplicationContext;
 using Managerment.DTO;
 using Managerment.Hubs;
@@ -5,7 +6,7 @@ using Managerment.Interfaces;
 using Managerment.Model;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace Managerment.Services
 {
@@ -13,33 +14,73 @@ namespace Managerment.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IHubContext<TaskHub> _hubContext;
-        private readonly IMemoryCache _cache;
+        private readonly IDistributedCache _cache;
+        private readonly ILogger<TaskService> _logger;
 
         private const string AllTasksCacheKey = "AllTasks";
         private const string MyTasksPrefixCacheKey = "MyTasks_User_";
         private const string TaskByIdPrefixCacheKey = "TaskById_";
 
-        private readonly MemoryCacheEntryOptions _cacheOptions;
+        private readonly DistributedCacheEntryOptions _cacheOptions;
 
-        public TaskService(ApplicationDbContext context, IHubContext<TaskHub> hubContext, IMemoryCache cache, IConfiguration configuration)
+        public TaskService(
+            ApplicationDbContext context,
+            IHubContext<TaskHub> hubContext,
+            IDistributedCache cache,
+            IConfiguration configuration,
+            ILogger<TaskService> logger)
         {
             _context = context;
             _hubContext = hubContext;
             _cache = cache;
+            _logger = logger;
 
             var slidingMinutes = configuration.GetValue("Cache:SlidingExpirationMinutes", 5);
             var absoluteMinutes = configuration.GetValue("Cache:AbsoluteExpirationMinutes", 30);
 
-            _cacheOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromMinutes(slidingMinutes))
-                .SetAbsoluteExpiration(TimeSpan.FromMinutes(absoluteMinutes));
+            _cacheOptions = new DistributedCacheEntryOptions
+            {
+                SlidingExpiration = TimeSpan.FromMinutes(slidingMinutes),
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(absoluteMinutes)
+            };
+        }
+
+        // Helper: Get or set distributed cache
+        private async Task<T?> GetFromCacheAsync<T>(string key)
+        {
+            var cached = await _cache.GetStringAsync(key);
+            if (cached != null)
+            {
+                _logger.LogDebug("Cache HIT for key: {CacheKey}", key);
+                return JsonSerializer.Deserialize<T>(cached);
+            }
+            return default;
+        }
+
+        private async Task SetCacheAsync<T>(string key, T data)
+        {
+            var json = JsonSerializer.Serialize(data);
+            await _cache.SetStringAsync(key, json, _cacheOptions);
+            _logger.LogDebug("Cache SET for key: {CacheKey}", key);
+        }
+
+        private async Task InvalidateCacheAsync(params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                await _cache.RemoveAsync(key);
+            }
+            _logger.LogDebug("Cache INVALIDATED for keys: {CacheKeys}", string.Join(", ", keys));
         }
 
         public async Task<ServiceResult<List<object>>> GetAllTasksAsync()
         {
-            if (_cache.TryGetValue(AllTasksCacheKey, out List<object> cachedTasks))
+            var cached = await _cache.GetStringAsync(AllTasksCacheKey);
+            if (cached != null)
             {
-                return ServiceResult<List<object>>.Ok(cachedTasks, "Cache");
+                _logger.LogDebug("Cache HIT for key: {CacheKey}", AllTasksCacheKey);
+                var cachedData = JsonSerializer.Deserialize<List<object>>(cached);
+                return ServiceResult<List<object>>.Ok(cachedData ?? new List<object>(), "Cache");
             }
 
             var tasks = await _context.TaskItems
@@ -57,7 +98,7 @@ namespace Managerment.Services
                 })
                 .ToListAsync<object>();
 
-            _cache.Set(AllTasksCacheKey, tasks, _cacheOptions);
+            await SetCacheAsync(AllTasksCacheKey, tasks);
             return ServiceResult<List<object>>.Ok(tasks, "Database");
         }
 
@@ -65,9 +106,12 @@ namespace Managerment.Services
         {
             string cacheKey = $"{MyTasksPrefixCacheKey}{userId}";
 
-            if (_cache.TryGetValue(cacheKey, out List<object> cachedTasks))
+            var cached = await _cache.GetStringAsync(cacheKey);
+            if (cached != null)
             {
-                return ServiceResult<List<object>>.Ok(cachedTasks, "Cache");
+                _logger.LogDebug("Cache HIT for key: {CacheKey}", cacheKey);
+                var cachedData = JsonSerializer.Deserialize<List<object>>(cached);
+                return ServiceResult<List<object>>.Ok(cachedData ?? new List<object>(), "Cache");
             }
 
             var tasks = await _context.TaskItems
@@ -86,7 +130,7 @@ namespace Managerment.Services
                 })
                 .ToListAsync<object>();
 
-            _cache.Set(cacheKey, tasks, _cacheOptions);
+            await SetCacheAsync(cacheKey, tasks);
             return ServiceResult<List<object>>.Ok(tasks, "Database");
         }
 
@@ -94,9 +138,12 @@ namespace Managerment.Services
         {
             string cacheKey = $"{TaskByIdPrefixCacheKey}{id}";
 
-            if (_cache.TryGetValue(cacheKey, out object cachedTask))
+            var cached = await _cache.GetStringAsync(cacheKey);
+            if (cached != null)
             {
-                return ServiceResult<object>.Ok(cachedTask, "Cache");
+                _logger.LogDebug("Cache HIT for key: {CacheKey}", cacheKey);
+                var cachedData = JsonSerializer.Deserialize<object>(cached);
+                return ServiceResult<object>.Ok(cachedData!, "Cache");
             }
 
             var task = await _context.TaskItems
@@ -120,7 +167,7 @@ namespace Managerment.Services
                 return ServiceResult<object>.NotFound("Task not found.");
             }
 
-            _cache.Set(cacheKey, task, _cacheOptions);
+            await SetCacheAsync(cacheKey, task);
             return ServiceResult<object>.Ok(task, "Database");
         }
 
@@ -135,11 +182,13 @@ namespace Managerment.Services
                 CreatedAt = DateTime.Now
             };
 
-            _cache.Remove(AllTasksCacheKey);
+            // Cache invalidation
+            var keysToInvalidate = new List<string> { AllTasksCacheKey };
             if (task.AssignedTo.HasValue)
             {
-                _cache.Remove($"{MyTasksPrefixCacheKey}{task.AssignedTo.Value}");
+                keysToInvalidate.Add($"{MyTasksPrefixCacheKey}{task.AssignedTo.Value}");
             }
+            await InvalidateCacheAsync(keysToInvalidate.ToArray());
 
             await _context.TaskItems.AddAsync(task);
             await _context.SaveChangesAsync();
@@ -160,6 +209,8 @@ namespace Managerment.Services
                     .SendAsync("ReceiveTaskAssignmentNotification",
                         $"You have been assigned a new task: {task.TaskName}");
             }
+
+            _logger.LogInformation("Task {TaskId} created by user", task.TaskId);
 
             return ServiceResult<object>.Created(
                 new { task.TaskId },
@@ -195,7 +246,6 @@ namespace Managerment.Services
 
             if (dto.AssignedTo.HasValue && dto.AssignedTo != task.AssignedTo)
             {
-                _cache.Remove($"{MyTasksPrefixCacheKey}{task.AssignedTo}");
                 task.AssignedTo = dto.AssignedTo;
             }
 
@@ -203,21 +253,21 @@ namespace Managerment.Services
             await _context.SaveChangesAsync();
 
             // Cache invalidation
-            _cache.Remove(AllTasksCacheKey);
-            _cache.Remove($"{TaskByIdPrefixCacheKey}{id}");
-            if (oldAssignedTo.HasValue)
+            var keysToInvalidate = new List<string>
             {
-                _cache.Remove($"{MyTasksPrefixCacheKey}{oldAssignedTo.Value}");
-            }
-            if (task.AssignedTo.HasValue)
-            {
-                _cache.Remove($"{MyTasksPrefixCacheKey}{task.AssignedTo.Value}");
-            }
+                AllTasksCacheKey,
+                $"{TaskByIdPrefixCacheKey}{id}"
+            };
+            if (oldAssignedTo.HasValue) keysToInvalidate.Add($"{MyTasksPrefixCacheKey}{oldAssignedTo.Value}");
+            if (task.AssignedTo.HasValue) keysToInvalidate.Add($"{MyTasksPrefixCacheKey}{task.AssignedTo.Value}");
+            await InvalidateCacheAsync(keysToInvalidate.ToArray());
 
             // SignalR notification
             await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate",
                 task.TaskId, task.TaskName, task.Description,
                 task.AssignedTo, task.Status.ToString());
+
+            _logger.LogInformation("Task {TaskId} updated", task.TaskId);
 
             return ServiceResult<object>.Ok(null, "Task updated successfully.");
         }
@@ -243,13 +293,14 @@ namespace Managerment.Services
             await _context.SaveChangesAsync();
 
             // Cache invalidation
-            _cache.Remove(AllTasksCacheKey);
-            _cache.Remove($"{TaskByIdPrefixCacheKey}{dto.TaskId}");
-            if (oldAssignedTo.HasValue)
+            var keysToInvalidate = new List<string>
             {
-                _cache.Remove($"{MyTasksPrefixCacheKey}{oldAssignedTo.Value}");
-            }
-            _cache.Remove($"{MyTasksPrefixCacheKey}{dto.NewAssignedToUserId}");
+                AllTasksCacheKey,
+                $"{TaskByIdPrefixCacheKey}{dto.TaskId}",
+                $"{MyTasksPrefixCacheKey}{dto.NewAssignedToUserId}"
+            };
+            if (oldAssignedTo.HasValue) keysToInvalidate.Add($"{MyTasksPrefixCacheKey}{oldAssignedTo.Value}");
+            await InvalidateCacheAsync(keysToInvalidate.ToArray());
 
             // SignalR notification
             await _hubContext.Clients.All.SendAsync("ReceiveTaskUpdate",
@@ -259,6 +310,8 @@ namespace Managerment.Services
             await _hubContext.Clients.User(newAssignee.UserId.ToString())
                 .SendAsync("ReceiveTaskAssignmentNotification",
                     $"You have been assigned to task: {task.TaskName}");
+
+            _logger.LogInformation("Task {TaskId} assigned to user {UserId}", dto.TaskId, dto.NewAssignedToUserId);
 
             return ServiceResult<object>.Ok(null,
                 $"Task assigned to {newAssignee.FullName} successfully.");
@@ -278,18 +331,21 @@ namespace Managerment.Services
             int? assignedToUser = task.AssignedTo;
 
             // Cache invalidation
-            _cache.Remove(AllTasksCacheKey);
-            _cache.Remove($"{TaskByIdPrefixCacheKey}{id}");
-            if (assignedToUser.HasValue)
+            var keysToInvalidate = new List<string>
             {
-                _cache.Remove($"{MyTasksPrefixCacheKey}{assignedToUser.Value}");
-            }
+                AllTasksCacheKey,
+                $"{TaskByIdPrefixCacheKey}{id}"
+            };
+            if (assignedToUser.HasValue) keysToInvalidate.Add($"{MyTasksPrefixCacheKey}{assignedToUser.Value}");
+            await InvalidateCacheAsync(keysToInvalidate.ToArray());
 
             _context.TaskItems.Remove(task);
             await _context.SaveChangesAsync();
 
             // SignalR notification
             await _hubContext.Clients.All.SendAsync("ReceiveTaskDelete", id);
+
+            _logger.LogInformation("Task {TaskId} deleted", id);
 
             return ServiceResult<object>.Ok(null, "Task deleted successfully.");
         }

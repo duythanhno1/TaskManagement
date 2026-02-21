@@ -1,11 +1,19 @@
-﻿using Managerment.Model;
+﻿using System.Text.Json;
+using Managerment.Interfaces;
+using Managerment.Model;
 using Microsoft.EntityFrameworkCore;
 
 namespace Managerment.ApplicationContext
 {
     public class ApplicationDbContext : DbContext
     {
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+        private readonly IHttpContextAccessor? _httpContextAccessor;
+
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IHttpContextAccessor? httpContextAccessor = null)
+            : base(options)
+        {
+            _httpContextAccessor = httpContextAccessor;
+        }
 
         public DbSet<User> Users { get; set; }
         public DbSet<TaskItem> TaskItems { get; set; }
@@ -15,6 +23,87 @@ namespace Managerment.ApplicationContext
         public DbSet<MessageReaction> MessageReactions { get; set; }
         public DbSet<MessageReadStatus> MessageReadStatuses { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
+
+        // Audit Trail: override SaveChangesAsync to track changes
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            var auditEntries = OnBeforeSaveChanges();
+            var result = await base.SaveChangesAsync(cancellationToken);
+
+            if (auditEntries.Count > 0)
+            {
+                await AuditLogs.AddRangeAsync(auditEntries, cancellationToken);
+                await base.SaveChangesAsync(cancellationToken);
+            }
+
+            return result;
+        }
+
+        private List<AuditLog> OnBeforeSaveChanges()
+        {
+            ChangeTracker.DetectChanges();
+            var auditEntries = new List<AuditLog>();
+
+            int? currentUserId = null;
+            var userClaim = _httpContextAccessor?.HttpContext?.User?.FindFirst(
+                System.Security.Claims.ClaimTypes.NameIdentifier);
+            if (userClaim != null && int.TryParse(userClaim.Value, out var uid))
+            {
+                currentUserId = uid;
+            }
+
+            foreach (var entry in ChangeTracker.Entries())
+            {
+                // Skip AuditLog itself to avoid infinite loop
+                if (entry.Entity is AuditLog || entry.State == EntityState.Detached || entry.State == EntityState.Unchanged)
+                    continue;
+
+                var auditLog = new AuditLog
+                {
+                    EntityName = entry.Entity.GetType().Name,
+                    UserId = currentUserId,
+                    Timestamp = DateTime.Now
+                };
+
+                // Get primary key value
+                var primaryKey = entry.Properties
+                    .FirstOrDefault(p => p.Metadata.IsPrimaryKey());
+                auditLog.EntityId = primaryKey?.CurrentValue?.ToString() ?? "N/A";
+
+                switch (entry.State)
+                {
+                    case EntityState.Added:
+                        auditLog.Action = "Create";
+                        auditLog.NewValues = JsonSerializer.Serialize(
+                            entry.Properties.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue));
+                        break;
+
+                    case EntityState.Modified:
+                        auditLog.Action = "Update";
+                        var changedProps = entry.Properties
+                            .Where(p => p.IsModified)
+                            .ToList();
+                        auditLog.OldValues = JsonSerializer.Serialize(
+                            changedProps.ToDictionary(p => p.Metadata.Name, p => p.OriginalValue));
+                        auditLog.NewValues = JsonSerializer.Serialize(
+                            changedProps.ToDictionary(p => p.Metadata.Name, p => p.CurrentValue));
+                        auditLog.ChangedColumns = JsonSerializer.Serialize(
+                            changedProps.Select(p => p.Metadata.Name));
+                        break;
+
+                    case EntityState.Deleted:
+                        auditLog.Action = "Delete";
+                        auditLog.OldValues = JsonSerializer.Serialize(
+                            entry.Properties.ToDictionary(p => p.Metadata.Name, p => p.OriginalValue));
+                        break;
+                }
+
+                auditEntries.Add(auditLog);
+            }
+
+            return auditEntries;
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -121,6 +210,21 @@ namespace Managerment.ApplicationContext
             // Index for quick notification queries
             modelBuilder.Entity<Notification>()
                 .HasIndex(n => new { n.UserId, n.IsRead });
+
+            // AuditLog -> User (optional)
+            modelBuilder.Entity<AuditLog>()
+                .HasOne(a => a.User)
+                .WithMany()
+                .HasForeignKey(a => a.UserId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Index for audit log queries
+            modelBuilder.Entity<AuditLog>()
+                .HasIndex(a => new { a.EntityName, a.EntityId });
+
+            modelBuilder.Entity<AuditLog>()
+                .HasIndex(a => a.Timestamp);
         }
     }
 }
