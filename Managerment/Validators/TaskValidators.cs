@@ -1,22 +1,23 @@
 using FluentValidation;
 using Managerment.DTO;
+using Managerment.Interfaces;
 
 namespace Managerment.Validators
 {
     public class TaskCreateValidator : AbstractValidator<TaskCreateDTO>
     {
-        public TaskCreateValidator()
+        public TaskCreateValidator(ILocalizer l)
         {
             RuleFor(x => x.TaskName)
-                .NotEmpty().WithMessage("Task name is required.")
-                .MaximumLength(200).WithMessage("Task name cannot exceed 200 characters.");
+                .NotEmpty().WithMessage(l.Get("v.taskname_required"))
+                .MaximumLength(200).WithMessage(l.Get("v.taskname_max"));
 
             RuleFor(x => x.Description)
-                .MaximumLength(1000).WithMessage("Description cannot exceed 1000 characters.");
+                .MaximumLength(1000).WithMessage(l.Get("v.description_max"));
 
             RuleFor(x => x.AssignedTo)
                 .GreaterThan(0).When(x => x.AssignedTo.HasValue)
-                .WithMessage("Assigned user ID must be a positive number.");
+                .WithMessage(l.Get("v.assigned_positive"));
         }
     }
 
@@ -24,35 +25,35 @@ namespace Managerment.Validators
     {
         private static readonly string[] ValidStatuses = { "Todo", "InProgress", "Done" };
 
-        public TaskUpdateValidator()
+        public TaskUpdateValidator(ILocalizer l)
         {
             RuleFor(x => x.TaskId)
-                .GreaterThan(0).WithMessage("Task ID must be a positive number.");
+                .GreaterThan(0).WithMessage(l.Get("v.taskid_positive"));
 
             RuleFor(x => x.TaskName)
                 .MaximumLength(200).When(x => x.TaskName != null)
-                .WithMessage("Task name cannot exceed 200 characters.");
+                .WithMessage(l.Get("v.taskname_max"));
 
             RuleFor(x => x.Status)
                 .Must(s => ValidStatuses.Contains(s))
                 .When(x => x.Status != null)
-                .WithMessage("Status must be one of: Todo, InProgress, Done.");
+                .WithMessage(l.Get("v.status_invalid"));
 
             RuleFor(x => x.AssignedTo)
                 .GreaterThan(0).When(x => x.AssignedTo.HasValue)
-                .WithMessage("Assigned user ID must be a positive number.");
+                .WithMessage(l.Get("v.assigned_positive"));
         }
     }
 
     public class TaskAssignValidator : AbstractValidator<TaskAssignDTO>
     {
-        public TaskAssignValidator()
+        public TaskAssignValidator(ILocalizer l)
         {
             RuleFor(x => x.TaskId)
-                .GreaterThan(0).WithMessage("Task ID must be a positive number.");
+                .GreaterThan(0).WithMessage(l.Get("v.taskid_positive"));
 
             RuleFor(x => x.NewAssignedToUserId)
-                .GreaterThan(0).WithMessage("New assigned user ID must be a positive number.");
+                .GreaterThan(0).WithMessage(l.Get("v.assigned_positive"));
         }
     }
 }

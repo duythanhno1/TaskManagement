@@ -1,33 +1,34 @@
 using FluentValidation;
 using Managerment.DTO;
+using Managerment.Interfaces;
 
 namespace Managerment.Validators
 {
     public class CreateGroupValidator : AbstractValidator<CreateGroupDTO>
     {
-        public CreateGroupValidator()
+        public CreateGroupValidator(ILocalizer l)
         {
             RuleFor(x => x.GroupName)
-                .NotEmpty().WithMessage("Group name is required.")
-                .MaximumLength(100).WithMessage("Group name cannot exceed 100 characters.");
+                .NotEmpty().WithMessage(l.Get("v.groupname_required"))
+                .MaximumLength(100).WithMessage(l.Get("v.groupname_max"));
 
             RuleFor(x => x.MemberUserIds)
-                .NotNull().WithMessage("Member list is required.")
+                .NotNull().WithMessage(l.Get("v.members_required"))
                 .Must(m => m != null && m.Count >= 2)
-                .WithMessage("Group must have at least 2 members.");
+                .WithMessage(l.Get("v.members_min"));
         }
     }
 
     public class SendMessageValidator : AbstractValidator<SendMessageDTO>
     {
-        public SendMessageValidator()
+        public SendMessageValidator(ILocalizer l)
         {
             RuleFor(x => x.GroupId)
-                .GreaterThan(0).WithMessage("Group ID must be a positive number.");
+                .GreaterThan(0).WithMessage(l.Get("v.groupid_positive"));
 
             RuleFor(x => x.Content)
-                .NotEmpty().WithMessage("Message content is required.")
-                .MaximumLength(5000).WithMessage("Message cannot exceed 5000 characters.");
+                .NotEmpty().WithMessage(l.Get("v.content_required"))
+                .MaximumLength(5000).WithMessage(l.Get("v.content_max"));
         }
     }
 
@@ -35,15 +36,15 @@ namespace Managerment.Validators
     {
         private static readonly string[] AllowedReactions = { "👍", "❤️", "😂", "😮", "😢", "😡", "🎉", "🔥" };
 
-        public ReactMessageValidator()
+        public ReactMessageValidator(ILocalizer l)
         {
             RuleFor(x => x.MessageId)
-                .GreaterThan(0).WithMessage("Message ID must be a positive number.");
+                .GreaterThan(0).WithMessage(l.Get("v.messageid_positive"));
 
             RuleFor(x => x.ReactionType)
-                .NotEmpty().WithMessage("Reaction type is required.")
+                .NotEmpty().WithMessage(l.Get("v.reaction_required"))
                 .Must(r => AllowedReactions.Contains(r))
-                .WithMessage($"Reaction must be one of: {string.Join(", ", AllowedReactions)}");
+                .WithMessage(l.Get("v.reaction_invalid"));
         }
     }
 }
