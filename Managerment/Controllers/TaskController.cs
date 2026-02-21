@@ -3,12 +3,14 @@ using Managerment.DTO;
 using Managerment.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Managerment.Controllers
 {
     [ApiController]
     [Route("api/v1/tasks")]
     [Authorize]
+    [EnableRateLimiting("general")]
     public class TaskController : Controller
     {
         private readonly ITaskService _taskService;

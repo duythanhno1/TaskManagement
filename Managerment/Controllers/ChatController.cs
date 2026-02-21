@@ -3,12 +3,14 @@ using Managerment.DTO;
 using Managerment.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Managerment.Controllers
 {
     [ApiController]
     [Route("api/v1/chat")]
     [Authorize]
+    [EnableRateLimiting("general")]
     public class ChatController : Controller
     {
         private readonly IChatService _chatService;
@@ -65,6 +67,7 @@ namespace Managerment.Controllers
         }
 
         [HttpPost("messages")]
+        [EnableRateLimiting("chat")]
         public async Task<IActionResult> SendMessage([FromBody] SendMessageDTO request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
@@ -87,6 +90,7 @@ namespace Managerment.Controllers
         }
 
         [HttpPost("messages/{messageId}/reactions")]
+        [EnableRateLimiting("chat")]
         public async Task<IActionResult> ReactToMessage(int messageId, [FromBody] ReactMessageDTO request)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);

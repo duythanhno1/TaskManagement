@@ -1,9 +1,12 @@
 ﻿using System.Text;
+using System.Threading.RateLimiting;
+using System.Security.Claims;
 using Managerment.ApplicationContext;
 using Managerment.Hubs;
 using Managerment.Interfaces;
 using Managerment.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using WebAPI.Utils.Middlewares;
@@ -83,6 +86,49 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddMemoryCache();
 
+// Rate Limiting
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfterValue)
+            ? (int)retryAfterValue.TotalSeconds
+            : 10;
+        context.HttpContext.Response.Headers.RetryAfter = retryAfter.ToString();
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            Message = "Too many requests. Please try again later.",
+            RetryAfter = retryAfter
+        }, cancellationToken);
+    };
+
+    // Auth: 5 requests / 30 giây per IP (chống brute-force)
+    options.AddFixedWindowLimiter("auth", opt =>
+    {
+        opt.PermitLimit = 5;
+        opt.Window = TimeSpan.FromSeconds(30);
+        opt.QueueLimit = 0;
+    });
+
+    // Chat: 30 requests / 10 giây per User (chống spam tin nhắn)
+    options.AddFixedWindowLimiter("chat", opt =>
+    {
+        opt.PermitLimit = 30;
+        opt.Window = TimeSpan.FromSeconds(10);
+        opt.QueueLimit = 0;
+    });
+
+    // General: 100 requests / 60 giây per User
+    options.AddFixedWindowLimiter("general", opt =>
+    {
+        opt.PermitLimit = 100;
+        opt.Window = TimeSpan.FromSeconds(60);
+        opt.QueueLimit = 0;
+    });
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -94,6 +140,8 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection(); 
 
 app.UseCors("AllowAll");
+
+app.UseRateLimiter();
 
 app.UseMiddleware<JWTAuthenticationMiddleware>(); 
 

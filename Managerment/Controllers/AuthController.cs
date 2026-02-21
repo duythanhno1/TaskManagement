@@ -2,12 +2,14 @@
 using Managerment.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Managerment.Controllers
 {
     [ApiController]
     [Route("api/v1/auth")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth")]
     public class AuthController : Controller
     {
         private readonly IAuthService _authService;

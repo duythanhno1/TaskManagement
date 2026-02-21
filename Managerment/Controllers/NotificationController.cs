@@ -2,12 +2,14 @@ using API.Utils;
 using Managerment.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Managerment.Controllers
 {
     [ApiController]
     [Route("api/v1/notifications")]
     [Authorize]
+    [EnableRateLimiting("general")]
     public class NotificationController : Controller
     {
         private readonly INotificationService _notificationService;
