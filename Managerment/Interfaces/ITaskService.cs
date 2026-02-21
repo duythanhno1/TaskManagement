@@ -13,5 +13,6 @@ namespace Managerment.Interfaces
         Task<ServiceResult<object>> AssignTaskAsync(TaskAssignDTO dto);
         Task<ServiceResult<object>> DeleteTaskAsync(int id);
         Task<ServiceResult<List<object>>> GetAllUsersAsync();
+        Task<ServiceResult<object>> SearchTasksAsync(TaskFilterDTO filter);
     }
 }

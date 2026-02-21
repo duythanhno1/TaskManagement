@@ -101,5 +101,12 @@ namespace Managerment.Controllers
             var result = await _taskService.DeleteTaskAsync(id);
             return StatusCode(result.StatusCode, new { Message = result.Message });
         }
+
+        [HttpGet("search")]
+        public async Task<IActionResult> SearchTasks([FromQuery] TaskFilterDTO filter)
+        {
+            var result = await _taskService.SearchTasksAsync(filter);
+            return Ok(new { Data = result.Data });
+        }
     }
 }

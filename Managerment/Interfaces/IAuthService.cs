@@ -7,5 +7,7 @@ namespace Managerment.Interfaces
     {
         Task<ServiceResult<object>> RegisterAsync(RegisterDTO dto);
         Task<ServiceResult<object>> LoginAsync(LoginDTO dto);
+        Task<ServiceResult<object>> RefreshTokenAsync(string refreshToken);
+        Task<ServiceResult<object>> RevokeTokenAsync(int userId);
     }
 }

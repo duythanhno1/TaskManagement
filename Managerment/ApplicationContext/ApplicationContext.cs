@@ -24,10 +24,22 @@ namespace Managerment.ApplicationContext
         public DbSet<MessageReadStatus> MessageReadStatuses { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         // Audit Trail: override SaveChangesAsync to track changes
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            // Soft Delete interception: convert Delete → set IsDeleted=true
+            foreach (var entry in ChangeTracker.Entries<ISoftDeletable>())
+            {
+                if (entry.State == EntityState.Deleted)
+                {
+                    entry.State = EntityState.Modified;
+                    entry.Entity.IsDeleted = true;
+                    entry.Entity.DeletedAt = DateTime.Now;
+                }
+            }
+
             var auditEntries = OnBeforeSaveChanges();
             var result = await base.SaveChangesAsync(cancellationToken);
 
@@ -108,6 +120,11 @@ namespace Managerment.ApplicationContext
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // Global Query Filters — Soft Delete
+            modelBuilder.Entity<TaskItem>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<ChatGroup>().HasQueryFilter(e => !e.IsDeleted);
 
             // User
             modelBuilder.Entity<User>()

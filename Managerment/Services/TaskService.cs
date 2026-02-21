@@ -367,5 +367,65 @@ namespace Managerment.Services
 
             return ServiceResult<List<object>>.Ok(users);
         }
+
+        public async Task<ServiceResult<object>> SearchTasksAsync(TaskFilterDTO filter)
+        {
+            var query = _context.TaskItems.AsQueryable();
+
+            // Dynamic WHERE chain
+            if (!string.IsNullOrWhiteSpace(filter.Keyword))
+            {
+                var keyword = filter.Keyword.ToLower();
+                query = query.Where(t =>
+                    t.TaskName.ToLower().Contains(keyword) ||
+                    t.Description.ToLower().Contains(keyword));
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter.Status))
+            {
+                if (Enum.TryParse<Model.TaskStatus>(filter.Status, true, out var status))
+                {
+                    query = query.Where(t => t.Status == status);
+                }
+            }
+
+            if (filter.AssignedTo.HasValue)
+            {
+                query = query.Where(t => t.AssignedTo == filter.AssignedTo.Value);
+            }
+
+            if (filter.FromDate.HasValue)
+            {
+                query = query.Where(t => t.CreatedAt >= filter.FromDate.Value);
+            }
+
+            if (filter.ToDate.HasValue)
+            {
+                query = query.Where(t => t.CreatedAt <= filter.ToDate.Value);
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var tasks = await query
+                .OrderByDescending(t => t.CreatedAt)
+                .Skip((filter.Page - 1) * filter.PageSize)
+                .Take(filter.PageSize)
+                .Select(t => new
+                {
+                    t.TaskId,
+                    t.TaskName,
+                    t.Description,
+                    t.Status,
+                    t.AssignedTo,
+                    AssignedToName = t.AssignedToUser != null ? t.AssignedToUser.FullName : null,
+                    t.CreatedAt,
+                    t.UpdatedAt
+                })
+                .ToListAsync<object>();
+
+            var pagedResult = PagedResult<object>.Create(tasks, totalCount, filter.Page, filter.PageSize);
+
+            return ServiceResult<object>.Ok(pagedResult);
+        }
     }
 }

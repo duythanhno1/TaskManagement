@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
+using Managerment.Interfaces;
 
 namespace Managerment.Model
 {
@@ -11,7 +12,7 @@ namespace Managerment.Model
     }
 
     [Table("TaskItems")]
-    public class TaskItem
+    public class TaskItem : ISoftDeletable
     {
         [Key]
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -32,6 +33,10 @@ namespace Managerment.Model
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
         public DateTime? UpdatedAt { get; set; }
+
+        // Soft Delete
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
 
         public User AssignedToUser { get; set; } 
     }

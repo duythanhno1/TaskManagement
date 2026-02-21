@@ -1,4 +1,5 @@
-﻿using Managerment.DTO;
+﻿using API.Utils;
+using Managerment.DTO;
 using Managerment.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,25 +35,50 @@ namespace Managerment.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDTO request)
         {
-            try
+            if (!ModelState.IsValid)
             {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(new { Message = "Email or Password is empty" });
-                }
-
-                var result = await _authService.LoginAsync(request);
-                if (!result.Success)
-                {
-                    return StatusCode(result.StatusCode, new { Message = result.Message });
-                }
-
-                return Ok(new { Message = result.Message, Token = ((dynamic)result.Data).Token });
+                return BadRequest(new { Message = "Email or Password is empty" });
             }
-            catch (Exception ex)
+
+            var result = await _authService.LoginAsync(request);
+            if (!result.Success)
             {
-                return StatusCode(500, ex.ToString());
+                return StatusCode(result.StatusCode, new { Message = result.Message });
             }
+
+            return Ok(new
+            {
+                Message = result.Message,
+                Data = result.Data
+            });
         }
+
+        [HttpPost("refresh")]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        {
+            var result = await _authService.RefreshTokenAsync(request.RefreshToken);
+            if (!result.Success)
+            {
+                return StatusCode(result.StatusCode, new { Message = result.Message });
+            }
+
+            return Ok(new { Data = result.Data });
+        }
+
+        [HttpPost("revoke")]
+        [Authorize]
+        public async Task<IActionResult> RevokeToken()
+        {
+            var userId = JWTHandler.GetUserIdFromHttpContext(HttpContext);
+            if (userId == 0) return Unauthorized();
+
+            var result = await _authService.RevokeTokenAsync(userId);
+            return Ok(new { Message = result.Message });
+        }
+    }
+
+    public class RefreshTokenRequest
+    {
+        public string RefreshToken { get; set; } = string.Empty;
     }
 }

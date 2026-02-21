@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Managerment.Interfaces;
 
 namespace Managerment.Model
 {
     [Table("ChatMessages")]
-    public class ChatMessage
+    public class ChatMessage : ISoftDeletable
     {
         [Key]
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -22,7 +23,9 @@ namespace Managerment.Model
 
         public DateTime SentAt { get; set; } = DateTime.Now;
 
+        // ISoftDeletable
         public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
 
         public ChatGroup Group { get; set; }
         public User SenderUser { get; set; }

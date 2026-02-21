@@ -57,8 +57,74 @@ namespace Managerment.Services
                 return ServiceResult<object>.NotFound(_localizer.Get("auth.login_failed"));
             }
 
-            var token = JWTHandler.GenerateJWT(user, _configuration["JWT:SecretKey"]!);
-            return ServiceResult<object>.Ok(new { Token = token }, _localizer.Get("auth.login_success"));
+            var accessToken = JWTHandler.GenerateJWT(user, _configuration["JWT:SecretKey"]!);
+            var refreshToken = await GenerateRefreshTokenAsync(user.UserId);
+
+            return ServiceResult<object>.Ok(new
+            {
+                AccessToken = accessToken,
+                RefreshToken = refreshToken.Token,
+                ExpiresIn = 7200 // 120 minutes in seconds
+            }, _localizer.Get("auth.login_success"));
+        }
+
+        public async Task<ServiceResult<object>> RefreshTokenAsync(string refreshToken)
+        {
+            var token = await _context.RefreshTokens
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(t => t.Token == refreshToken && !t.IsRevoked);
+
+            if (token == null || token.ExpiresAt < DateTime.UtcNow)
+            {
+                return ServiceResult<object>.Unauthorized("Invalid or expired refresh token.");
+            }
+
+            // Rotate: revoke old, create new
+            token.IsRevoked = true;
+
+            var newAccessToken = JWTHandler.GenerateJWT(token.User, _configuration["JWT:SecretKey"]!);
+            var newRefreshToken = await GenerateRefreshTokenAsync(token.UserId);
+
+            await _context.SaveChangesAsync();
+
+            return ServiceResult<object>.Ok(new
+            {
+                AccessToken = newAccessToken,
+                RefreshToken = newRefreshToken.Token,
+                ExpiresIn = 900
+            });
+        }
+
+        public async Task<ServiceResult<object>> RevokeTokenAsync(int userId)
+        {
+            var activeTokens = await _context.RefreshTokens
+                .Where(t => t.UserId == userId && !t.IsRevoked)
+                .ToListAsync();
+
+            foreach (var token in activeTokens)
+            {
+                token.IsRevoked = true;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return ServiceResult<object>.Ok(null, "All tokens revoked.");
+        }
+
+        private async Task<RefreshToken> GenerateRefreshTokenAsync(int userId)
+        {
+            var refreshToken = new RefreshToken
+            {
+                UserId = userId,
+                Token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
+                ExpiresAt = DateTime.UtcNow.AddDays(30),
+                CreatedAt = DateTime.Now
+            };
+
+            await _context.RefreshTokens.AddAsync(refreshToken);
+            await _context.SaveChangesAsync();
+
+            return refreshToken;
         }
     }
 }

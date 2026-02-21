@@ -25,7 +25,7 @@ namespace API.Utils
 
             var token = new JwtSecurityToken(
                 claims: claims,
-                expires: DateTime.UtcNow.AddDays(1),
+                expires: DateTime.UtcNow.AddMinutes(120),
                 signingCredentials: credentials);
 
             return new JwtSecurityTokenHandler().WriteToken(token);
