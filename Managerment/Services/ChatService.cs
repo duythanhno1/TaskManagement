@@ -13,12 +13,14 @@ namespace Managerment.Services
         private readonly ApplicationDbContext _context;
         private readonly IHubContext<ChatHub> _chatHubContext;
         private readonly INotificationService _notificationService;
+        private readonly ILocalizer _localizer;
 
-        public ChatService(ApplicationDbContext context, IHubContext<ChatHub> chatHubContext, INotificationService notificationService)
+        public ChatService(ApplicationDbContext context, IHubContext<ChatHub> chatHubContext, INotificationService notificationService, ILocalizer localizer)
         {
             _context = context;
             _chatHubContext = chatHubContext;
             _notificationService = notificationService;
+            _localizer = localizer;
         }
 
         public async Task<ServiceResult<object>> CreateGroupAsync(int currentUserId, CreateGroupDTO dto)
@@ -35,7 +37,7 @@ namespace Managerment.Services
 
             if (existingUserIds.Count != dto.MemberUserIds.Count)
             {
-                return ServiceResult<object>.BadRequest("One or more users not found.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("chat.users_not_found"));
             }
 
             var group = new ChatGroup
@@ -59,7 +61,6 @@ namespace Managerment.Services
             await _context.ChatGroupMembers.AddRangeAsync(members);
             await _context.SaveChangesAsync();
 
-            // Batch notification cho tất cả members (trừ creator)
             var otherMemberIds = dto.MemberUserIds.Where(id => id != currentUserId).ToList();
             if (otherMemberIds.Count > 0)
             {
@@ -70,15 +71,14 @@ namespace Managerment.Services
                     group.GroupId.ToString());
             }
 
-            return ServiceResult<object>.Created(new { group.GroupId, group.GroupName }, "Group created successfully.");
+            return ServiceResult<object>.Created(new { group.GroupId, group.GroupName }, _localizer.Get("chat.group_created"));
         }
 
-        // FIX #1: AsSplitQuery + optimized projections để tránh cartesian explosion
         public async Task<ServiceResult<List<object>>> GetMyGroupsAsync(int currentUserId)
         {
             var groups = await _context.ChatGroupMembers
                 .Where(m => m.UserId == currentUserId)
-                .AsSplitQuery() // Tách thành nhiều SQL queries nhỏ thay vì 1 JOIN khổng lồ
+                .AsSplitQuery()
                 .Select(m => new
                 {
                     m.Group.GroupId,
@@ -90,7 +90,6 @@ namespace Managerment.Services
                         member.User.UserId,
                         member.User.FullName
                     }),
-                    // Sub-query cho LastMessage — EF Core dịch thành 1 subselect, không gây N+1
                     LastMessage = m.Group.Messages
                         .Where(msg => !msg.IsDeleted)
                         .OrderByDescending(msg => msg.SentAt)
@@ -101,7 +100,6 @@ namespace Managerment.Services
                             SenderName = msg.SenderUser.FullName
                         })
                         .FirstOrDefault(),
-                    // Count chỉ trả số, không load entities
                     UnreadCount = m.Group.Messages
                         .Count(msg => !msg.IsDeleted
                             && msg.SenderUserId != currentUserId
@@ -112,7 +110,6 @@ namespace Managerment.Services
             return ServiceResult<List<object>>.Ok(groups);
         }
 
-        // FIX #2 + #3: Cursor-based pagination + Reaction summary
         public async Task<ServiceResult<List<object>>> GetMessagesAsync(int currentUserId, int groupId, int? cursor = null, int pageSize = 50)
         {
             var isMember = await _context.ChatGroupMembers
@@ -120,10 +117,9 @@ namespace Managerment.Services
 
             if (!isMember)
             {
-                return ServiceResult<List<object>>.BadRequest("You are not a member of this group.");
+                return ServiceResult<List<object>>.BadRequest(_localizer.Get("chat.not_member"));
             }
 
-            // Cursor-based: lấy messages có MessageId < cursor (mới nhất trước)
             var query = _context.ChatMessages
                 .Where(m => m.GroupId == groupId && !m.IsDeleted);
 
@@ -134,7 +130,7 @@ namespace Managerment.Services
 
             var messages = await query
                 .OrderByDescending(m => m.SentAt)
-                .Take(pageSize + 1) // Lấy thêm 1 để check HasMore
+                .Take(pageSize + 1)
                 .Select(m => new
                 {
                     m.MessageId,
@@ -145,7 +141,6 @@ namespace Managerment.Services
                         m.SenderUser.UserId,
                         m.SenderUser.FullName
                     },
-                    // FIX #3: Group reactions thành summary thay vì trả full user info
                     ReactionSummary = m.Reactions
                         .GroupBy(r => r.ReactionType)
                         .Select(g => new
@@ -154,7 +149,6 @@ namespace Managerment.Services
                             Count = g.Count(),
                             UserIds = g.Select(r => r.UserId)
                         }),
-                    // Chỉ trả ReadCount thay vì full ReadBy list
                     ReadCount = m.ReadStatuses.Count()
                 })
                 .ToListAsync();
@@ -168,7 +162,6 @@ namespace Managerment.Services
                 hasMore ? $"NextCursor:{nextCursor}" : null);
         }
 
-        // FIX #4: Batch notifications
         public async Task<ServiceResult<object>> SendMessageAsync(int currentUserId, SendMessageDTO dto)
         {
             var isMember = await _context.ChatGroupMembers
@@ -176,7 +169,7 @@ namespace Managerment.Services
 
             if (!isMember)
             {
-                return ServiceResult<object>.BadRequest("You are not a member of this group.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("chat.not_member"));
             }
 
             var sender = await _context.Users.FindAsync(currentUserId);
@@ -208,7 +201,6 @@ namespace Managerment.Services
             await _chatHubContext.Clients.Group($"chat_{dto.GroupId}")
                 .SendAsync("ReceiveMessage", messageData);
 
-            // Batch notification — 1 lần INSERT + 1 lần SaveChanges thay vì N lần
             var otherMemberIds = await _context.ChatGroupMembers
                 .Where(m => m.GroupId == dto.GroupId && m.UserId != currentUserId)
                 .Select(m => m.UserId)
@@ -227,7 +219,7 @@ namespace Managerment.Services
                     dto.GroupId.ToString());
             }
 
-            return ServiceResult<object>.Created(messageData, "Message sent successfully.");
+            return ServiceResult<object>.Created(messageData, _localizer.Get("chat.message_sent"));
         }
 
         public async Task<ServiceResult<object>> DeleteMessageAsync(int currentUserId, int messageId)
@@ -235,12 +227,12 @@ namespace Managerment.Services
             var message = await _context.ChatMessages.FindAsync(messageId);
             if (message == null)
             {
-                return ServiceResult<object>.NotFound("Message not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("chat.message_not_found"));
             }
 
             if (message.SenderUserId != currentUserId)
             {
-                return ServiceResult<object>.BadRequest("You can only delete your own messages.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("chat.delete_own_only"));
             }
 
             message.IsDeleted = true;
@@ -249,7 +241,7 @@ namespace Managerment.Services
             await _chatHubContext.Clients.Group($"chat_{message.GroupId}")
                 .SendAsync("MessageDeleted", new { messageId, message.GroupId });
 
-            return ServiceResult<object>.Ok(null, "Message deleted successfully.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("chat.message_deleted"));
         }
 
         public async Task<ServiceResult<object>> ReactToMessageAsync(int currentUserId, ReactMessageDTO dto)
@@ -257,7 +249,7 @@ namespace Managerment.Services
             var message = await _context.ChatMessages.FindAsync(dto.MessageId);
             if (message == null)
             {
-                return ServiceResult<object>.NotFound("Message not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("chat.message_not_found"));
             }
 
             var isMember = await _context.ChatGroupMembers
@@ -265,7 +257,7 @@ namespace Managerment.Services
 
             if (!isMember)
             {
-                return ServiceResult<object>.BadRequest("You are not a member of this group.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("chat.not_member"));
             }
 
             var existingReaction = await _context.MessageReactions
@@ -310,7 +302,7 @@ namespace Managerment.Services
                     message.GroupId.ToString());
             }
 
-            return ServiceResult<object>.Ok(null, "Reaction added successfully.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("chat.reaction_added"));
         }
 
         public async Task<ServiceResult<object>> RemoveReactionAsync(int currentUserId, int messageId)
@@ -320,7 +312,7 @@ namespace Managerment.Services
 
             if (reaction == null)
             {
-                return ServiceResult<object>.NotFound("Reaction not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("chat.reaction_not_found"));
             }
 
             var message = await _context.ChatMessages.FindAsync(messageId);
@@ -331,10 +323,9 @@ namespace Managerment.Services
             await _chatHubContext.Clients.Group($"chat_{message.GroupId}")
                 .SendAsync("ReactionRemoved", new { messageId, message.GroupId, currentUserId });
 
-            return ServiceResult<object>.Ok(null, "Reaction removed.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("chat.reaction_removed"));
         }
 
-        // FIX #5: Batch update với giới hạn 500 per batch
         public async Task<ServiceResult<object>> MarkAsReadAsync(int currentUserId, int groupId)
         {
             var isMember = await _context.ChatGroupMembers
@@ -342,18 +333,17 @@ namespace Managerment.Services
 
             if (!isMember)
             {
-                return ServiceResult<object>.BadRequest("You are not a member of this group.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("chat.not_member"));
             }
 
             const int batchSize = 500;
 
-            // Chỉ lấy tối đa batchSize IDs, tránh load quá nhiều vào memory
             var unreadMessageIds = await _context.ChatMessages
                 .Where(m => m.GroupId == groupId
                     && !m.IsDeleted
                     && m.SenderUserId != currentUserId
                     && !m.ReadStatuses.Any(rs => rs.UserId == currentUserId))
-                .OrderBy(m => m.MessageId) // Đọc từ cũ đến mới
+                .OrderBy(m => m.MessageId)
                 .Select(m => m.MessageId)
                 .Take(batchSize)
                 .ToListAsync();
@@ -362,7 +352,7 @@ namespace Managerment.Services
             {
                 return ServiceResult<object>.Ok(
                     new { MarkedCount = 0, HasMore = false },
-                    "All messages already read.");
+                    _localizer.Get("chat.all_read"));
             }
 
             var readStatuses = unreadMessageIds.Select(msgId => new MessageReadStatus
@@ -375,7 +365,6 @@ namespace Managerment.Services
             await _context.MessageReadStatuses.AddRangeAsync(readStatuses);
             await _context.SaveChangesAsync();
 
-            // Kiểm tra còn unread messages không
             var hasMore = unreadMessageIds.Count == batchSize;
 
             await _chatHubContext.Clients.Group($"chat_{groupId}")
@@ -389,7 +378,7 @@ namespace Managerment.Services
 
             return ServiceResult<object>.Ok(
                 new { MarkedCount = unreadMessageIds.Count, HasMore = hasMore },
-                $"{unreadMessageIds.Count} messages marked as read.");
+                _localizer.Get("chat.marked_read", unreadMessageIds.Count));
         }
     }
 }

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 
+
 namespace Managerment.Services
 {
     public class TaskService : ITaskService
@@ -16,6 +17,7 @@ namespace Managerment.Services
         private readonly IHubContext<TaskHub> _hubContext;
         private readonly IDistributedCache _cache;
         private readonly ILogger<TaskService> _logger;
+        private readonly ILocalizer _localizer;
 
         private const string AllTasksCacheKey = "AllTasks";
         private const string MyTasksPrefixCacheKey = "MyTasks_User_";
@@ -28,12 +30,14 @@ namespace Managerment.Services
             IHubContext<TaskHub> hubContext,
             IDistributedCache cache,
             IConfiguration configuration,
-            ILogger<TaskService> logger)
+            ILogger<TaskService> logger,
+            ILocalizer localizer)
         {
             _context = context;
             _hubContext = hubContext;
             _cache = cache;
             _logger = logger;
+            _localizer = localizer;
 
             var slidingMinutes = configuration.GetValue("Cache:SlidingExpirationMinutes", 5);
             var absoluteMinutes = configuration.GetValue("Cache:AbsoluteExpirationMinutes", 30);
@@ -164,7 +168,7 @@ namespace Managerment.Services
 
             if (task == null)
             {
-                return ServiceResult<object>.NotFound("Task not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("task.not_found"));
             }
 
             await SetCacheAsync(cacheKey, task);
@@ -214,20 +218,20 @@ namespace Managerment.Services
 
             return ServiceResult<object>.Created(
                 new { task.TaskId },
-                "Task created successfully");
+                _localizer.Get("task.created"));
         }
 
         public async Task<ServiceResult<object>> UpdateTaskAsync(int id, TaskUpdateDTO dto)
         {
             if (id != dto.TaskId)
             {
-                return ServiceResult<object>.BadRequest("Task ID mismatch.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("task.id_mismatch"));
             }
 
             var task = await _context.TaskItems.FindAsync(id);
             if (task == null)
             {
-                return ServiceResult<object>.NotFound("Task not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("task.not_found"));
             }
 
             int? oldAssignedTo = task.AssignedTo;
@@ -241,7 +245,7 @@ namespace Managerment.Services
             }
             else
             {
-                return ServiceResult<object>.BadRequest("Invalid status value.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("task.invalid_status"));
             }
 
             if (dto.AssignedTo.HasValue && dto.AssignedTo != task.AssignedTo)
@@ -269,7 +273,7 @@ namespace Managerment.Services
 
             _logger.LogInformation("Task {TaskId} updated", task.TaskId);
 
-            return ServiceResult<object>.Ok(null, "Task updated successfully.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("task.updated"));
         }
 
         public async Task<ServiceResult<object>> AssignTaskAsync(TaskAssignDTO dto)
@@ -277,13 +281,13 @@ namespace Managerment.Services
             var task = await _context.TaskItems.FindAsync(dto.TaskId);
             if (task == null)
             {
-                return ServiceResult<object>.NotFound("Task not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("task.not_found"));
             }
 
             var newAssignee = await _context.Users.FindAsync(dto.NewAssignedToUserId);
             if (newAssignee == null)
             {
-                return ServiceResult<object>.BadRequest("New assigned user not found.");
+                return ServiceResult<object>.BadRequest(_localizer.Get("task.user_not_found"));
             }
 
             int? oldAssignedTo = task.AssignedTo;
@@ -314,7 +318,7 @@ namespace Managerment.Services
             _logger.LogInformation("Task {TaskId} assigned to user {UserId}", dto.TaskId, dto.NewAssignedToUserId);
 
             return ServiceResult<object>.Ok(null,
-                $"Task assigned to {newAssignee.FullName} successfully.");
+                _localizer.Get("task.assigned", newAssignee.FullName));
         }
 
         public async Task<ServiceResult<object>> DeleteTaskAsync(int id)
@@ -325,7 +329,7 @@ namespace Managerment.Services
 
             if (task == null)
             {
-                return ServiceResult<object>.NotFound("Task not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("task.not_found"));
             }
 
             int? assignedToUser = task.AssignedTo;
@@ -347,7 +351,7 @@ namespace Managerment.Services
 
             _logger.LogInformation("Task {TaskId} deleted", id);
 
-            return ServiceResult<object>.Ok(null, "Task deleted successfully.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("task.deleted"));
         }
 
         public async Task<ServiceResult<List<object>>> GetAllUsersAsync()

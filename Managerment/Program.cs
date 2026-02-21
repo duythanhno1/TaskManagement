@@ -66,6 +66,7 @@ try
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IChatService, ChatService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddSingleton<ILocalizer, JsonLocalizer>();
 
     // Database
     builder.Services.AddDbContext<ApplicationDbContext>(options =>

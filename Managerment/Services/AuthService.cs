@@ -12,11 +12,13 @@ namespace Managerment.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly ILocalizer _localizer;
 
-        public AuthService(ApplicationDbContext context, IConfiguration configuration)
+        public AuthService(ApplicationDbContext context, IConfiguration configuration, ILocalizer localizer)
         {
             _context = context;
             _configuration = configuration;
+            _localizer = localizer;
         }
 
         public async Task<ServiceResult<object>> RegisterAsync(RegisterDTO dto)
@@ -26,7 +28,7 @@ namespace Managerment.Services
 
             if (checkEmail != null)
             {
-                return ServiceResult<object>.Conflict("Email Already Exist");
+                return ServiceResult<object>.Conflict(_localizer.Get("auth.email_exists"));
             }
 
             var newUser = new User
@@ -42,7 +44,7 @@ namespace Managerment.Services
             await _context.Users.AddAsync(newUser);
             await _context.SaveChangesAsync();
 
-            return ServiceResult<object>.Ok(null, "Register Success");
+            return ServiceResult<object>.Ok(null, _localizer.Get("auth.register_success"));
         }
 
         public async Task<ServiceResult<object>> LoginAsync(LoginDTO dto)
@@ -53,11 +55,11 @@ namespace Managerment.Services
 
             if (user == null)
             {
-                return ServiceResult<object>.NotFound("Email or Password Incorrect");
+                return ServiceResult<object>.NotFound(_localizer.Get("auth.login_failed"));
             }
 
             var token = JWTHandler.GenerateJWT(user, _configuration["JWT:SecretKey"]!);
-            return ServiceResult<object>.Ok(new { Token = token }, "Login Success");
+            return ServiceResult<object>.Ok(new { Token = token }, _localizer.Get("auth.login_success"));
         }
     }
 }

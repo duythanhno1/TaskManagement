@@ -11,11 +11,13 @@ namespace Managerment.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IHubContext<ChatHub> _chatHubContext;
+        private readonly ILocalizer _localizer;
 
-        public NotificationService(ApplicationDbContext context, IHubContext<ChatHub> chatHubContext)
+        public NotificationService(ApplicationDbContext context, IHubContext<ChatHub> chatHubContext, ILocalizer localizer)
         {
             _context = context;
             _chatHubContext = chatHubContext;
+            _localizer = localizer;
         }
 
         public async Task<ServiceResult<List<object>>> GetMyNotificationsAsync(int userId, int page = 1, int pageSize = 20)
@@ -50,13 +52,13 @@ namespace Managerment.Services
 
             if (notification == null)
             {
-                return ServiceResult<object>.NotFound("Notification not found.");
+                return ServiceResult<object>.NotFound(_localizer.Get("notification.not_found"));
             }
 
             notification.IsRead = true;
             await _context.SaveChangesAsync();
 
-            return ServiceResult<object>.Ok(null, "Notification marked as read.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("notification.marked_read"));
         }
 
         public async Task<ServiceResult<object>> MarkAllAsReadAsync(int userId)
@@ -72,7 +74,7 @@ namespace Managerment.Services
 
             await _context.SaveChangesAsync();
 
-            return ServiceResult<object>.Ok(null, $"{unreadNotifications.Count} notifications marked as read.");
+            return ServiceResult<object>.Ok(null, _localizer.Get("notification.all_marked", unreadNotifications.Count));
         }
 
         public async Task CreateNotificationAsync(int userId, string type, string title, string content, string referenceId = null)
@@ -91,7 +93,6 @@ namespace Managerment.Services
             await _context.Notifications.AddAsync(notification);
             await _context.SaveChangesAsync();
 
-            // Push real-time notification
             await _chatHubContext.Clients.User(userId.ToString())
                 .SendAsync("ReceiveNotification", new
                 {
@@ -122,7 +123,6 @@ namespace Managerment.Services
             await _context.Notifications.AddRangeAsync(notifications);
             await _context.SaveChangesAsync();
 
-            // Push real-time notifications in parallel
             var pushTasks = notifications.Select(n =>
                 _chatHubContext.Clients.User(n.UserId.ToString())
                     .SendAsync("ReceiveNotification", new
