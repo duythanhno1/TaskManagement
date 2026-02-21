@@ -1,12 +1,7 @@
-﻿using System.Text.Json;
-using API.Utils;
-using Managerment.ApplicationContext;
-using Managerment.DTO;
-using Managerment.Model;
-using Managerment.Util;
+﻿using Managerment.DTO;
+using Managerment.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Managerment.Controllers
 {
@@ -15,41 +10,23 @@ namespace Managerment.Controllers
     [AllowAnonymous]
     public class AuthController : Controller
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IConfiguration _configuration;
-        public AuthController(ApplicationDbContext context, IConfiguration configuration)
+        private readonly IAuthService _authService;
+
+        public AuthController(IAuthService authService)
         {
-            _context = context;
-            _configuration = configuration;
+            _authService = authService;
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterDTO request) 
+        public async Task<IActionResult> Register([FromBody] RegisterDTO request)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest();
             }
 
-            var checkEmail = await _context.Users.FirstOrDefaultAsync(x => x.Email.ToLower().Equals(request.Email.ToLower()));
-            if (checkEmail != null)
-            {
-                return Conflict(new { Message = "Email Already Exist" });
-            }
-
-            var createNewAccount = new User
-            {
-                Email = request.Email, 
-                FullName = request.FullName, 
-                PasswordHash = Ultil.GenerateMD5(request.Password),
-                PhoneNumber = request.PhoneNumber, 
-                Role = request.Role,
-                CreatedAt = DateTime.Now
-            };
-
-            await _context.Users.AddAsync(createNewAccount);
-            await _context.SaveChangesAsync();
-            return Ok(new { Message = "Register Success" });
+            var result = await _authService.RegisterAsync(request);
+            return StatusCode(result.StatusCode, new { Message = result.Message });
         }
 
         [HttpPost("login")]
@@ -62,17 +39,16 @@ namespace Managerment.Controllers
                     return BadRequest(new { Message = "Email or Password is empty" });
                 }
 
-                var checkLogin = await _context.Users.FirstOrDefaultAsync(x => x.Email.ToLower().Equals(request.Email.ToLower())
-                                                                          && x.PasswordHash.Equals(Ultil.GenerateMD5(request.Password)));
-                if (checkLogin == null)
+                var result = await _authService.LoginAsync(request);
+                if (!result.Success)
                 {
-                    return NotFound(new { Message = "Email or Password Incorrect" });
+                    return StatusCode(result.StatusCode, new { Message = result.Message });
                 }
-                var token = JWTHandler.GenerateJWT(checkLogin, _configuration["JWT:SecretKey"]!);
-                return Ok(new { Message = "Login Success", Token = token });
+
+                return Ok(new { Message = result.Message, Token = ((dynamic)result.Data).Token });
             }
-            catch (Exception ex) { 
-            
+            catch (Exception ex)
+            {
                 return StatusCode(500, ex.ToString());
             }
         }
