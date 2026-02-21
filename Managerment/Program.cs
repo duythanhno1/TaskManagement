@@ -1,30 +1,37 @@
-﻿using System.Text;
+﻿using System.IO.Compression;
+using System.Text;
 using System.Threading.RateLimiting;
-using System.Security.Claims;
 using Managerment.ApplicationContext;
 using Managerment.Hubs;
 using Managerment.Interfaces;
+using Managerment.MiddleWare;
 using Managerment.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi.Models;
 using WebAPI.Utils.Middlewares;
-using Microsoft.Extensions.Caching.Memory;
 
 var builder = WebApplication.CreateBuilder(args);
+var config = builder.Configuration;
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
+// DI Registration
 builder.Services.AddScoped<JWTAuthenticationMiddleware>();
 builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Database
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(config.GetConnectionString("DefaultConnection")));
+
+// Swagger
 builder.Services.AddSwaggerGen(option =>
 {
     option.SwaggerDoc("v1", new OpenApiInfo
@@ -57,8 +64,10 @@ builder.Services.AddSwaggerGen(option =>
     });
 });
 
+// SignalR
 builder.Services.AddSignalR();
 
+// JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -68,25 +77,61 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuer = false,
             ValidateAudience = false,
             ValidateLifetime = true,
-            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:SecretKey"]!))
+            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(config["JWT:SecretKey"]!))
         };
     });
 
+// CORS — đọc allowed origins từ config
+var allowedOrigins = config.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowConfigured", policy =>
     {
-        policy
-            .SetIsOriginAllowed(origin => true)
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        }
+        else
+        {
+            // Fallback: cho phép tất cả nếu chưa config
+            policy.SetIsOriginAllowed(origin => true)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
+        }
     });
-}); 
+});
 
+// Memory Cache
 builder.Services.AddMemoryCache();
 
-// Rate Limiting
+// Response Compression (gzip + brotli)
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+    {
+        "application/json",
+        "text/plain"
+    });
+});
+
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+    options.Level = CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+    options.Level = CompressionLevel.SmallestSize);
+
+// Health Check
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ApplicationDbContext>("database", HealthStatus.Unhealthy);
+
+// Rate Limiting — đọc config từ appsettings.json
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -104,52 +149,65 @@ builder.Services.AddRateLimiter(options =>
         }, cancellationToken);
     };
 
-    // Auth: 5 requests / 30 giây per IP (chống brute-force)
+    // Auth: configurable (default 5/30s)
     options.AddFixedWindowLimiter("auth", opt =>
     {
-        opt.PermitLimit = 5;
-        opt.Window = TimeSpan.FromSeconds(30);
+        opt.PermitLimit = config.GetValue("RateLimit:Auth:PermitLimit", 5);
+        opt.Window = TimeSpan.FromSeconds(config.GetValue("RateLimit:Auth:WindowSeconds", 30));
         opt.QueueLimit = 0;
     });
 
-    // Chat: 30 requests / 10 giây per User (chống spam tin nhắn)
+    // Chat: configurable (default 30/10s)
     options.AddFixedWindowLimiter("chat", opt =>
     {
-        opt.PermitLimit = 30;
-        opt.Window = TimeSpan.FromSeconds(10);
+        opt.PermitLimit = config.GetValue("RateLimit:Chat:PermitLimit", 30);
+        opt.Window = TimeSpan.FromSeconds(config.GetValue("RateLimit:Chat:WindowSeconds", 10));
         opt.QueueLimit = 0;
     });
 
-    // General: 100 requests / 60 giây per User
+    // General: configurable (default 100/60s)
     options.AddFixedWindowLimiter("general", opt =>
     {
-        opt.PermitLimit = 100;
-        opt.Window = TimeSpan.FromSeconds(60);
+        opt.PermitLimit = config.GetValue("RateLimit:General:PermitLimit", 100);
+        opt.Window = TimeSpan.FromSeconds(config.GetValue("RateLimit:General:WindowSeconds", 60));
         opt.QueueLimit = 0;
     });
 });
 
 var app = builder.Build();
 
+// Middleware pipeline (thứ tự quan trọng!)
+
+// 1. Global Exception Handler — đầu tiên để bắt mọi exception
+app.UseMiddleware<GlobalExceptionMiddleware>();
+
+// 2. Response Compression
+app.UseResponseCompression();
+
+// 3. Swagger
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection(); 
+app.UseHttpsRedirection();
 
-app.UseCors("AllowAll");
+// 4. CORS
+app.UseCors("AllowConfigured");
 
+// 5. Rate Limiter
 app.UseRateLimiter();
 
-app.UseMiddleware<JWTAuthenticationMiddleware>(); 
+// 6. Auth
+app.UseMiddleware<JWTAuthenticationMiddleware>();
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.UseAuthentication(); 
-app.UseAuthorization(); 
-
-app.MapControllers(); 
-app.MapHub<TaskHub>("/taskhub"); 
-app.MapHub<ChatHub>("/chathub"); 
+// 7. Endpoints
+app.MapControllers();
+app.MapHub<TaskHub>("/taskhub");
+app.MapHub<ChatHub>("/chathub");
+app.MapHealthChecks("/health");
 
 app.Run();

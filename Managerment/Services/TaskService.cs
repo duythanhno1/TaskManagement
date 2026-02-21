@@ -19,15 +19,20 @@ namespace Managerment.Services
         private const string MyTasksPrefixCacheKey = "MyTasks_User_";
         private const string TaskByIdPrefixCacheKey = "TaskById_";
 
-        private readonly MemoryCacheEntryOptions _cacheOptions = new MemoryCacheEntryOptions()
-            .SetSlidingExpiration(TimeSpan.FromMinutes(5))
-            .SetAbsoluteExpiration(TimeSpan.FromMinutes(30));
+        private readonly MemoryCacheEntryOptions _cacheOptions;
 
-        public TaskService(ApplicationDbContext context, IHubContext<TaskHub> hubContext, IMemoryCache cache)
+        public TaskService(ApplicationDbContext context, IHubContext<TaskHub> hubContext, IMemoryCache cache, IConfiguration configuration)
         {
             _context = context;
             _hubContext = hubContext;
             _cache = cache;
+
+            var slidingMinutes = configuration.GetValue("Cache:SlidingExpirationMinutes", 5);
+            var absoluteMinutes = configuration.GetValue("Cache:AbsoluteExpirationMinutes", 30);
+
+            _cacheOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromMinutes(slidingMinutes))
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(absoluteMinutes));
         }
 
         public async Task<ServiceResult<List<object>>> GetAllTasksAsync()
