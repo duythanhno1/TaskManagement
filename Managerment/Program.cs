@@ -20,6 +20,7 @@ using WebAPI.Utils.Middlewares;
 using Hangfire;
 using Hangfire.SqlServer;
 using Managerment.BackgroundJobs;
+using Prometheus;
 
 // Serilog bootstrap logger — file only
 Log.Logger = new LoggerConfiguration()
@@ -113,8 +114,8 @@ try
         });
     });
 
-    // SignalR
-    builder.Services.AddSignalR();
+    // SignalR (basic — backplane added below if Redis is configured)
+    var signalRBuilder = builder.Services.AddSignalR();
 
     // JWT Authentication
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -163,7 +164,14 @@ try
             options.Configuration = redisConnection;
             options.InstanceName = config.GetValue("Redis:InstanceName", "TaskMgmt_");
         });
-        Log.Information("Using Redis distributed cache: {RedisConnection}", redisConnection);
+
+        // SignalR Redis Backplane — enables multi-instance scaling
+        signalRBuilder.AddStackExchangeRedis(redisConnection, options =>
+        {
+            options.Configuration.ChannelPrefix = StackExchange.Redis.RedisChannel.Literal("TaskMgmt");
+        });
+
+        Log.Information("Using Redis distributed cache + SignalR backplane: {RedisConnection}", redisConnection);
     }
     else
     {
@@ -274,6 +282,9 @@ try
     // 3. Response Compression
     app.UseResponseCompression();
 
+    // 3.5 Prometheus HTTP metrics
+    app.UseHttpMetrics();
+
     // 4. Swagger
     if (app.Environment.IsDevelopment())
     {
@@ -299,25 +310,34 @@ try
     app.MapHub<TaskHub>("/taskhub");
     app.MapHub<ChatHub>("/chathub");
     app.MapHealthChecks("/health");
+    app.MapMetrics("/metrics"); // Prometheus metrics endpoint
 
-    // 9. Hangfire Dashboard (only in Development or for authorized users)
-    app.MapHangfireDashboard("/hangfire");
+    // 9. Hangfire Dashboard + Recurring Jobs
+    try
+    {
+        app.MapHangfireDashboard("/hangfire");
 
-    // Register recurring jobs
-    RecurringJob.AddOrUpdate<TokenCleanupJob>(
-        "cleanup-expired-tokens",
-        job => job.Execute(),
-        Cron.Daily(2)); // Mỗi ngày lúc 2:00 AM
+        RecurringJob.AddOrUpdate<TokenCleanupJob>(
+            "cleanup-expired-tokens",
+            job => job.Execute(),
+            Cron.Daily(2));
 
-    RecurringJob.AddOrUpdate<SoftDeleteCleanupJob>(
-        "cleanup-soft-deleted",
-        job => job.Execute(),
-        Cron.Weekly(DayOfWeek.Sunday, 3)); // Chủ nhật 3:00 AM
+        RecurringJob.AddOrUpdate<SoftDeleteCleanupJob>(
+            "cleanup-soft-deleted",
+            job => job.Execute(),
+            Cron.Weekly(DayOfWeek.Sunday, 3));
 
-    RecurringJob.AddOrUpdate<TaskDeadlineReminderJob>(
-        "remind-task-deadline",
-        job => job.Execute(),
-        Cron.Hourly()); // Mỗi giờ
+        RecurringJob.AddOrUpdate<TaskDeadlineReminderJob>(
+            "remind-task-deadline",
+            job => job.Execute(),
+            Cron.Hourly());
+
+        Log.Information("Hangfire recurring jobs registered successfully");
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "Hangfire initialization failed — background jobs disabled. Ensure database is available.");
+    }
 
     app.Run();
 }
