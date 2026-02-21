@@ -17,6 +17,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddScoped<JWTAuthenticationMiddleware>();
 builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -100,5 +102,6 @@ app.UseAuthorization();
 
 app.MapControllers(); 
 app.MapHub<TaskHub>("/taskhub"); 
+app.MapHub<ChatHub>("/chathub"); 
 
 app.Run();
