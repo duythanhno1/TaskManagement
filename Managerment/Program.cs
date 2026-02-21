@@ -17,6 +17,9 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
 using WebAPI.Utils.Middlewares;
+using Hangfire;
+using Hangfire.SqlServer;
+using Managerment.BackgroundJobs;
 
 // Serilog bootstrap logger — file only
 Log.Logger = new LoggerConfiguration()
@@ -34,7 +37,7 @@ try
     var builder = WebApplication.CreateBuilder(args);
     var config = builder.Configuration;
 
-    // Serilog — file chính, console chỉ hiện Warning+
+    // Serilog — file only, daily rolling, 30 ngày
     builder.Host.UseSerilog((context, services, loggerConfig) =>
     {
         loggerConfig
@@ -230,6 +233,26 @@ try
         });
     });
 
+    // Hangfire — Background Jobs
+    builder.Services.AddHangfire(hangfireConfig => hangfireConfig
+        .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+        .UseSimpleAssemblyNameTypeSerializer()
+        .UseRecommendedSerializerSettings()
+        .UseSqlServerStorage(config.GetConnectionString("DefaultConnection"), new SqlServerStorageOptions
+        {
+            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+            QueuePollInterval = TimeSpan.FromSeconds(15),
+            UseRecommendedIsolationLevel = true,
+            DisableGlobalLocks = true
+        }));
+    builder.Services.AddHangfireServer();
+
+    // Register job classes
+    builder.Services.AddTransient<TokenCleanupJob>();
+    builder.Services.AddTransient<SoftDeleteCleanupJob>();
+    builder.Services.AddTransient<TaskDeadlineReminderJob>();
+
     var app = builder.Build();
 
     // Middleware pipeline
@@ -276,6 +299,25 @@ try
     app.MapHub<TaskHub>("/taskhub");
     app.MapHub<ChatHub>("/chathub");
     app.MapHealthChecks("/health");
+
+    // 9. Hangfire Dashboard (only in Development or for authorized users)
+    app.MapHangfireDashboard("/hangfire");
+
+    // Register recurring jobs
+    RecurringJob.AddOrUpdate<TokenCleanupJob>(
+        "cleanup-expired-tokens",
+        job => job.Execute(),
+        Cron.Daily(2)); // Mỗi ngày lúc 2:00 AM
+
+    RecurringJob.AddOrUpdate<SoftDeleteCleanupJob>(
+        "cleanup-soft-deleted",
+        job => job.Execute(),
+        Cron.Weekly(DayOfWeek.Sunday, 3)); // Chủ nhật 3:00 AM
+
+    RecurringJob.AddOrUpdate<TaskDeadlineReminderJob>(
+        "remind-task-deadline",
+        job => job.Execute(),
+        Cron.Hourly()); // Mỗi giờ
 
     app.Run();
 }

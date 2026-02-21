@@ -18,7 +18,8 @@ namespace WebAPI.Utils.Middlewares
             || context.Request.Path.StartsWithSegments("/taskhub", StringComparison.OrdinalIgnoreCase)
             || context.Request.Path.StartsWithSegments("/chathub", StringComparison.OrdinalIgnoreCase)
             || context.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
-            || context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase))
+            || context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase)
+            || context.Request.Path.StartsWithSegments("/hangfire", StringComparison.OrdinalIgnoreCase))
             {
                 await next(context);
                 return;

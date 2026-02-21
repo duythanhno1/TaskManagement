@@ -18,5 +18,7 @@ namespace Managerment.DTO
         [Required]
         [EnumDataType(typeof(Managerment.Model.TaskStatus))]
         public string Status { get; set; } 
+
+        public DateTime? DueDate { get; set; }
     }
 }

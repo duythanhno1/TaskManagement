@@ -32,6 +32,8 @@ namespace Managerment.Model
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
+        public DateTime? DueDate { get; set; }
+
         public DateTime? UpdatedAt { get; set; }
 
         // Soft Delete

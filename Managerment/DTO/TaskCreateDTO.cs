@@ -12,5 +12,7 @@ namespace Managerment.DTO
         public string Description { get; set; }
 
         public int? AssignedTo { get; set; } // User ID
+
+        public DateTime? DueDate { get; set; }
     }
 }
