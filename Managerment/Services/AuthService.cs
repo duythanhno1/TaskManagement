@@ -35,7 +35,7 @@ namespace Managerment.Services
             {
                 Email = dto.Email,
                 FullName = dto.FullName,
-                PasswordHash = Ultil.GenerateMD5(dto.Password),
+                PasswordHash = Ultil.HashPassword(dto.Password),
                 PhoneNumber = dto.PhoneNumber,
                 Role = dto.Role,
                 CreatedAt = DateTime.Now
@@ -50,10 +50,9 @@ namespace Managerment.Services
         public async Task<ServiceResult<object>> LoginAsync(LoginDTO dto)
         {
             var user = await _context.Users
-                .FirstOrDefaultAsync(x => x.Email.ToLower().Equals(dto.Email.ToLower())
-                    && x.PasswordHash.Equals(Ultil.GenerateMD5(dto.Password)));
+                .FirstOrDefaultAsync(x => x.Email.ToLower().Equals(dto.Email.ToLower()));
 
-            if (user == null)
+            if (user == null || !Ultil.VerifyPassword(dto.Password, user.PasswordHash))
             {
                 return ServiceResult<object>.NotFound(_localizer.Get("auth.login_failed"));
             }

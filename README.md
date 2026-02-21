@@ -11,12 +11,14 @@ Real-time Task Management & Chat API built with **ASP.NET Core 8** — enterpris
 | **Database** | SQL Server |
 | **Cache** | Redis (IDistributedCache) + In-memory fallback |
 | **Real-time** | SignalR WebSocket |
-| **Auth** | JWT Bearer Token |
+| **Auth** | JWT Bearer Token, BCrypt password hashing |
 | **Logging** | Serilog (Console + Rolling File) |
 | **Validation** | FluentValidation |
 | **Security** | Rate Limiting, CORS, Global Exception Handler |
 | **Monitoring** | Health Checks, Audit Trail |
 | **Compression** | Brotli + Gzip |
+| **Container** | Docker + Docker Compose |
+| **i18n** | Multi-language (VI, EN, JA) |
 
 ## 📐 Architecture
 
@@ -70,6 +72,7 @@ Request → GlobalExceptionHandler → Serilog Request Logging
 - **Rate Limiting** — Auth: 5/30s, Chat: 30/10s, General: 100/60s (configurable)
 - **Validation** — FluentValidation: password strength, email format, reaction whitelist
 - **Logging** — Serilog structured logs with TraceId, request duration, rolling daily files
+- **i18n** — Multi-language response messages (VI/EN/JA) via `Accept-Language` header
 
 ## ⚡ Quick Start
 

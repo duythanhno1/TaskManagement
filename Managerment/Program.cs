@@ -18,10 +18,13 @@ using Serilog;
 using Serilog.Events;
 using WebAPI.Utils.Middlewares;
 
-// Serilog bootstrap logger
+// Serilog bootstrap logger — file only
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
-    .WriteTo.Console()
+    .WriteTo.File(
+        path: $"Logs/log_{DateTime.Now:dd_MM_yyyy}.txt",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30)
     .CreateBootstrapLogger();
 
 try
@@ -31,7 +34,7 @@ try
     var builder = WebApplication.CreateBuilder(args);
     var config = builder.Configuration;
 
-    // Serilog — thay thế default logging
+    // Serilog — file chính, console chỉ hiện Warning+
     builder.Host.UseSerilog((context, services, loggerConfig) =>
     {
         loggerConfig
@@ -41,9 +44,10 @@ try
             .Enrich.WithMachineName()
             .Enrich.WithProperty("Application", "TaskManagement")
             .WriteTo.Console(
-                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+                restrictedToMinimumLevel: LogEventLevel.Information,
+                outputTemplate: "[{Timestamp:HH:mm:ss}] {Message:lj}{NewLine}")
             .WriteTo.File(
-                path: "Logs/log-.txt",
+                path: "Logs/log_.txt",
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 30,
                 outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}");

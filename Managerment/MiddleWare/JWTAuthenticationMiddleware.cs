@@ -16,7 +16,9 @@ namespace WebAPI.Utils.Middlewares
             // Allow anonymous access for specified paths and SignalR negotiation
             if (allowAnonymousAPI.Any(path => context.Request.Path.StartsWithSegments($"/api/v1/{path}", StringComparison.OrdinalIgnoreCase))
             || context.Request.Path.StartsWithSegments("/taskhub", StringComparison.OrdinalIgnoreCase)
-            || context.Request.Path.StartsWithSegments("/chathub", StringComparison.OrdinalIgnoreCase)) // Allow SignalR connection
+            || context.Request.Path.StartsWithSegments("/chathub", StringComparison.OrdinalIgnoreCase)
+            || context.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
+            || context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase))
             {
                 await next(context);
                 return;

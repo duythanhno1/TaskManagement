@@ -36,5 +36,15 @@ namespace Managerment.Services
         {
             return new ServiceResult<T> { Success = false, StatusCode = statusCode, Message = message };
         }
+
+        public static ServiceResult<T> Unauthorized(string message = "Unauthorized.")
+        {
+            return new ServiceResult<T> { Success = false, StatusCode = 401, Message = message };
+        }
+
+        public static ServiceResult<T> Forbidden(string message = "Forbidden.")
+        {
+            return new ServiceResult<T> { Success = false, StatusCode = 403, Message = message };
+        }
     }
 }
