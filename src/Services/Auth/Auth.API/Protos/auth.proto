@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+option csharp_namespace = "Auth.API.Protos";
+
+package auth;
+
+service AuthGrpc {
+  rpc ValidateToken (ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc GetUserInfo (GetUserInfoRequest) returns (GetUserInfoResponse);
+  rpc GetUsersByIds (GetUsersByIdsRequest) returns (GetUsersByIdsResponse);
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool is_valid = 1;
+  int32 user_id = 2;
+  string role = 3;
+  string full_name = 4;
+}
+
+message GetUserInfoRequest {
+  int32 user_id = 1;
+}
+
+message GetUserInfoResponse {
+  int32 user_id = 1;
+  string full_name = 2;
+  string email = 3;
+  string role = 4;
+  bool found = 5;
+}
+
+message GetUsersByIdsRequest {
+  repeated int32 user_ids = 1;
+}
+
+message GetUsersByIdsResponse {
+  repeated UserInfo users = 1;
+}
+
+message UserInfo {
+  int32 user_id = 1;
+  string full_name = 2;
+  string email = 3;
+}
