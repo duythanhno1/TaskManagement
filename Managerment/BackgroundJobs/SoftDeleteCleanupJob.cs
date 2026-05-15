@@ -20,7 +20,7 @@ namespace Managerment.BackgroundJobs
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            var cutoff = DateTime.Now.AddDays(-30);
+            var cutoff = DateTime.UtcNow.AddDays(-30);
             int totalDeleted = 0;
 
             // Hard-delete TaskItems soft-deleted > 30 days

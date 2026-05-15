@@ -183,7 +183,7 @@ namespace Managerment.Services
                 Description = dto.Description,
                 AssignedTo = dto.AssignedTo,
                 Status = Managerment.Model.TaskStatus.Todo,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             // Cache invalidation
@@ -253,7 +253,7 @@ namespace Managerment.Services
                 task.AssignedTo = dto.AssignedTo;
             }
 
-            task.UpdatedAt = DateTime.Now;
+            task.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             // Cache invalidation
@@ -292,7 +292,7 @@ namespace Managerment.Services
 
             int? oldAssignedTo = task.AssignedTo;
             task.AssignedTo = dto.NewAssignedToUserId;
-            task.UpdatedAt = DateTime.Now;
+            task.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 

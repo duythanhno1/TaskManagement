@@ -17,7 +17,7 @@ namespace Managerment.Model
 
         public bool IsDirectMessage { get; set; } = false;
 
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         [ForeignKey("CreatedByUser")]
         public int CreatedByUserId { get; set; }

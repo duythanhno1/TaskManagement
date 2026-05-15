@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using System.Text;
 using System.Threading.RateLimiting;
 using FluentValidation;
@@ -18,7 +18,7 @@ using Serilog;
 using Serilog.Events;
 using WebAPI.Utils.Middlewares;
 using Hangfire;
-using Hangfire.SqlServer;
+using Hangfire.PostgreSql;
 using Managerment.BackgroundJobs;
 using Prometheus;
 
@@ -26,13 +26,16 @@ using Prometheus;
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .WriteTo.File(
-        path: $"Logs/log_{DateTime.Now:dd_MM_yyyy}.txt",
+        path: $"Logs/log_{DateTime.UtcNow:dd_MM_yyyy}.txt",
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30)
     .CreateBootstrapLogger();
 
 try
 {
+    // Npgsql: enable legacy timestamp behavior (DateTime ↔ timestamptz)
+    AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
     Log.Information("Starting Task Management API...");
 
     var builder = WebApplication.CreateBuilder(args);
@@ -78,7 +81,7 @@ try
 
     // Database
     builder.Services.AddDbContext<ApplicationDbContext>(options =>
-        options.UseSqlServer(config.GetConnectionString("DefaultConnection")));
+        options.UseNpgsql(config.GetConnectionString("DefaultConnection")));
 
     // Swagger
     builder.Services.AddSwaggerGen(option =>
@@ -246,14 +249,8 @@ try
         .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
         .UseSimpleAssemblyNameTypeSerializer()
         .UseRecommendedSerializerSettings()
-        .UseSqlServerStorage(config.GetConnectionString("DefaultConnection"), new SqlServerStorageOptions
-        {
-            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-            QueuePollInterval = TimeSpan.FromSeconds(15),
-            UseRecommendedIsolationLevel = true,
-            DisableGlobalLocks = true
-        }));
+        .UsePostgreSqlStorage(options =>
+            options.UseNpgsqlConnection(config.GetConnectionString("DefaultConnection")!)));
     builder.Services.AddHangfireServer();
 
     // Register job classes

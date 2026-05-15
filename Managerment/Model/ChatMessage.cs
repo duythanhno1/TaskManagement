@@ -21,7 +21,7 @@ namespace Managerment.Model
         [MaxLength(4000)]
         public string Content { get; set; }
 
-        public DateTime SentAt { get; set; } = DateTime.Now;
+        public DateTime SentAt { get; set; } = DateTime.UtcNow;
 
         // ISoftDeletable
         public bool IsDeleted { get; set; } = false;

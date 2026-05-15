@@ -38,7 +38,7 @@ namespace Managerment.Services
                 PasswordHash = Ultil.HashPassword(dto.Password),
                 PhoneNumber = dto.PhoneNumber,
                 Role = dto.Role,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             await _context.Users.AddAsync(newUser);
@@ -118,7 +118,7 @@ namespace Managerment.Services
                 UserId = userId,
                 Token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
                 ExpiresAt = DateTime.UtcNow.AddDays(30),
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             await _context.RefreshTokens.AddAsync(refreshToken);

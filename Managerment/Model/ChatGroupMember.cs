@@ -16,7 +16,7 @@ namespace Managerment.Model
         [ForeignKey("User")]
         public int UserId { get; set; }
 
-        public DateTime JoinedAt { get; set; } = DateTime.Now;
+        public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
 
         public ChatGroup Group { get; set; }
         public User User { get; set; }

@@ -20,7 +20,7 @@ namespace Managerment.BackgroundJobs
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             var deadline = now.AddHours(24);
 
             // Find tasks with DueDate within next 24h, not completed, assigned to someone
@@ -42,7 +42,7 @@ namespace Managerment.BackgroundJobs
                 Content = $"Task \"{task.TaskName}\" sẽ hết hạn lúc {task.DueDate:dd/MM/yyyy HH:mm}",
                 ReferenceId = task.TaskId.ToString(),
                 IsRead = false,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             }).ToList();
 
             await context.Notifications.AddRangeAsync(notifications);

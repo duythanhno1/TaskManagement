@@ -16,7 +16,7 @@ namespace Managerment.Model
         [ForeignKey("User")]
         public int UserId { get; set; }
 
-        public DateTime ReadAt { get; set; } = DateTime.Now;
+        public DateTime ReadAt { get; set; } = DateTime.UtcNow;
 
         public ChatMessage Message { get; set; }
         public User User { get; set; }

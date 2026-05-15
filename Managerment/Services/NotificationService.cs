@@ -87,7 +87,7 @@ namespace Managerment.Services
                 Content = content,
                 ReferenceId = referenceId,
                 IsRead = false,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             await _context.Notifications.AddAsync(notification);
@@ -117,7 +117,7 @@ namespace Managerment.Services
                 Content = content,
                 ReferenceId = referenceId,
                 IsRead = false,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             }).ToList();
 
             await _context.Notifications.AddRangeAsync(notifications);

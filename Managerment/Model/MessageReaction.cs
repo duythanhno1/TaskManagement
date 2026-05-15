@@ -20,7 +20,7 @@ namespace Managerment.Model
         [MaxLength(20)]
         public string ReactionType { get; set; } // like, love, laugh, wow, sad
 
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public ChatMessage Message { get; set; }
         public User User { get; set; }

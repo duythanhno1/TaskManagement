@@ -45,7 +45,7 @@ namespace Managerment.Services
                 GroupName = dto.GroupName,
                 IsDirectMessage = dto.IsDirectMessage,
                 CreatedByUserId = currentUserId,
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             await _context.ChatGroups.AddAsync(group);
@@ -55,7 +55,7 @@ namespace Managerment.Services
             {
                 GroupId = group.GroupId,
                 UserId = userId,
-                JoinedAt = DateTime.Now
+                JoinedAt = DateTime.UtcNow
             }).ToList();
 
             await _context.ChatGroupMembers.AddRangeAsync(members);
@@ -179,7 +179,7 @@ namespace Managerment.Services
                 GroupId = dto.GroupId,
                 SenderUserId = currentUserId,
                 Content = dto.Content,
-                SentAt = DateTime.Now
+                SentAt = DateTime.UtcNow
             };
 
             await _context.ChatMessages.AddAsync(message);
@@ -266,7 +266,7 @@ namespace Managerment.Services
             if (existingReaction != null)
             {
                 existingReaction.ReactionType = dto.ReactionType;
-                existingReaction.CreatedAt = DateTime.Now;
+                existingReaction.CreatedAt = DateTime.UtcNow;
             }
             else
             {
@@ -275,7 +275,7 @@ namespace Managerment.Services
                     MessageId = dto.MessageId,
                     UserId = currentUserId,
                     ReactionType = dto.ReactionType,
-                    CreatedAt = DateTime.Now
+                    CreatedAt = DateTime.UtcNow
                 };
                 await _context.MessageReactions.AddAsync(reaction);
             }
@@ -359,7 +359,7 @@ namespace Managerment.Services
             {
                 MessageId = msgId,
                 UserId = currentUserId,
-                ReadAt = DateTime.Now
+                ReadAt = DateTime.UtcNow
             }).ToList();
 
             await _context.MessageReadStatuses.AddRangeAsync(readStatuses);

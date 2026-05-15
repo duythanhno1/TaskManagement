@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Managerment.Interfaces;
 using Managerment.Model;
 using Microsoft.EntityFrameworkCore;
@@ -29,14 +29,14 @@ namespace Managerment.ApplicationContext
         // Audit Trail: override SaveChangesAsync to track changes
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
-            // Soft Delete interception: convert Delete → set IsDeleted=true
+            // Soft Delete interception: convert Delete ? set IsDeleted=true
             foreach (var entry in ChangeTracker.Entries<ISoftDeletable>())
             {
                 if (entry.State == EntityState.Deleted)
                 {
                     entry.State = EntityState.Modified;
                     entry.Entity.IsDeleted = true;
-                    entry.Entity.DeletedAt = DateTime.Now;
+                    entry.Entity.DeletedAt = DateTime.UtcNow;
                 }
             }
 
@@ -75,7 +75,7 @@ namespace Managerment.ApplicationContext
                 {
                     EntityName = entry.Entity.GetType().Name,
                     UserId = currentUserId,
-                    Timestamp = DateTime.Now
+                    Timestamp = DateTime.UtcNow
                 };
 
                 // Get primary key value
@@ -121,7 +121,7 @@ namespace Managerment.ApplicationContext
         {
             base.OnModelCreating(modelBuilder);
 
-            // Global Query Filters — Soft Delete
+            // Global Query Filters � Soft Delete
             modelBuilder.Entity<TaskItem>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<ChatMessage>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<ChatGroup>().HasQueryFilter(e => !e.IsDeleted);

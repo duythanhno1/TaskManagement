@@ -19,7 +19,7 @@ namespace Managerment.Model
 
         public bool IsRevoked { get; set; } = false;
 
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         [ForeignKey("UserId")]
         public User User { get; set; } = null!;

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
 namespace Managerment.DTO
@@ -20,6 +20,6 @@ namespace Managerment.DTO
         [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
         public string Role { get; set; } = "User";
         [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

@@ -26,7 +26,7 @@ namespace Managerment.Model
 
         public int? UserId { get; set; }
 
-        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
         // Navigation
         public User? User { get; set; }
